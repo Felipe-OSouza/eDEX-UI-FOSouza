@@ -1,0 +1,154 @@
+--- edex-ui-backup/src/_boot.js	2026-05-22 19:03:41.594850809 +0000
++++ edex-ui/src/_boot.js	2026-05-22 19:04:10.986681819 +0000
+@@ -120,7 +120,11 @@
+ //Create default window state file
+ if(!fs.existsSync(lastWindowStateFile)) {
+     fs.writeFileSync(lastWindowStateFile, JSON.stringify({
+-        useFullscreen: true
++        useFullscreen: true,
++        width: null,
++        height: null,
++        x: null,
++        y: null
+     }, "", 4));
+     signale.info(`Default last window state written to ${lastWindowStateFile}`);
+ }
+@@ -177,6 +181,22 @@
+     }
+     let {x, y, width, height} = display.bounds;
+     width++; height++;
++
++    // Restaurar tamanho e posição da última sessão (modo janela)
++    let lastState = {};
++    try { lastState = JSON.parse(fs.readFileSync(lastWindowStateFile, "utf-8")); } catch(e) {}
++    let useFullscreen = lastState.useFullscreen !== false;
++    if (!useFullscreen && settings.allowWindowed) {
++        if (lastState.width && lastState.height) {
++            width  = lastState.width;
++            height = lastState.height;
++        }
++        if (lastState.x != null && lastState.y != null) {
++            x = lastState.x;
++            y = lastState.y;
++        }
++    }
++
+     win = new BrowserWindow({
+         title: "eDEX-UI",
+         x,
+@@ -186,7 +206,7 @@
+         show: false,
+         resizable: true,
+         movable: settings.allowWindowed || false,
+-        fullscreen: settings.forceFullscreen || false,
++        fullscreen: (settings.forceFullscreen || useFullscreen) || false,
+         autoHideMenuBar: true,
+         frame: settings.allowWindowed || false,
+         backgroundColor: '#000000',
+@@ -215,10 +235,27 @@
+     win.show();
+     if (!settings.allowWindowed) {
+         win.setResizable(false);
+-    } else if (!require(lastWindowStateFile)["useFullscreen"]) {
++    } else if (!useFullscreen) {
+         win.setFullScreen(false);
+     }
+ 
++    // Salvar geometria da janela ao redimensionar ou mover
++    const saveWindowGeometry = () => {
++        if (win.isFullScreen() || win.isMaximized()) return;
++        try {
++            let state = JSON.parse(fs.readFileSync(lastWindowStateFile, "utf-8"));
++            let [w, h] = win.getSize();
++            let [wx, wy] = win.getPosition();
++            state.width  = w;
++            state.height = h;
++            state.x = wx;
++            state.y = wy;
++            fs.writeFileSync(lastWindowStateFile, JSON.stringify(state, "", 4));
++        } catch(e) {}
++    };
++    win.on("resize", saveWindowGeometry);
++    win.on("move",   saveWindowGeometry);
++
+     signale.watch("Waiting for frontend connection...");
+ }
+ 
+--- edex-ui-backup/src/classes/updateChecker.class.js	2026-05-22 19:03:41.609436228 +0000
++++ edex-ui/src/classes/updateChecker.class.js	2026-05-22 19:04:27.032066938 +0000
+@@ -1,71 +1,10 @@
+ class UpdateChecker {
+     constructor() {
+-        let https = require("https");
++        // Update check desabilitado: este fork (security-patched) é a versão
++        // mais recente disponível e o projeto original está arquivado.
++        // O aviso de atualização foi removido para evitar falsos positivos.
+         let electron = require("electron");
+-        let remote = require("@electron/remote");
+-        let current = remote.app.getVersion();
+-
+-        this._failed = false;
+-        this._willfail = false;
+-        this._fail = e => {
+-            this._failed = true;
+-            electron.ipcRenderer.send("log", "note", "UpdateChecker: Could not fetch latest release from GitHub's API.");
+-            electron.ipcRenderer.send("log", "debug", `Error: ${e}`);
+-        };
+-
+-        https.get({
+-            protocol: "https:",
+-            host: "api.github.com",
+-                path: "/repos/theelderemo/edex-ui-security-patched/releases/latest",
+-            headers: {
+-                "User-Agent": "eDEX-UI UpdateChecker"
+-            }
+-        }, res => {
+-            switch(res.statusCode) {
+-                case 200:
+-                    break;
+-                case 404:
+-                    this._fail("Got 404 (Not Found) response from server");
+-                    break;
+-                default:
+-                    this._willfail = true;
+-            }
+-
+-            let rawData = "";
+-
+-            res.on('data', chunk => {
+-                rawData += chunk;
+-            });
+-
+-            res.on('end', () => {
+-                let d = rawData;
+-                if (this._failed === true) {
+-                    // Do nothing, it already failed
+-                } else if (this._willfail) {
+-                    this._fail(d.toString());
+-                } else {
+-                    try {
+-                        let release = JSON.parse(d.toString());
+-                        if (release.tag_name.slice(1) === current) {
+-                            electron.ipcRenderer.send("log", "info", "UpdateChecker: Running latest version.");
+-                        } else if (Number(release.tag_name.slice(1).replace(/\./g, "")) < Number(current.replace("-pre", "").replace(/\./g, ""))) {
+-                            electron.ipcRenderer.send("log", "info", "UpdateChecker: Running an unreleased, development version.");
+-                        } else {
+-                            new Modal({
+-                                type: "info",
+-                                title: "New version available",
+-                                message: `eDEX-UI <strong>${release.tag_name}</strong> is now available.<br/>Head over to <a href="#" onclick="require('electron').shell.openExternal('${release.html_url}')">github.com</a> to download the latest version.`
+-                            });
+-                            electron.ipcRenderer.send("log", "info", `UpdateChecker: New version ${release.tag_name} available.`);
+-                        }
+-                    } catch(e) {
+-                        this._fail(e);
+-                    }
+-                }
+-            });
+-        }).on('error', e => {
+-            this._fail(e);
+-        });
++        electron.ipcRenderer.send("log", "info", "UpdateChecker: disabled (security-patched fork, no updates expected).");
+     }
+ }
+ 

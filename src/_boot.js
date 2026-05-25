@@ -120,7 +120,11 @@ if (!fs.existsSync(shortcutsFile)) {
 //Create default window state file
 if(!fs.existsSync(lastWindowStateFile)) {
     fs.writeFileSync(lastWindowStateFile, JSON.stringify({
-        useFullscreen: true
+        useFullscreen: true,
+        width: null,
+        height: null,
+        x: null,
+        y: null
     }, "", 4));
     signale.info(`Default last window state written to ${lastWindowStateFile}`);
 }
@@ -177,6 +181,22 @@ function createWindow(settings) {
     }
     let {x, y, width, height} = display.bounds;
     width++; height++;
+
+    // Restaurar tamanho e posição da última sessão (modo janela)
+    let lastState = {};
+    try { lastState = JSON.parse(fs.readFileSync(lastWindowStateFile, "utf-8")); } catch(e) {}
+    let useFullscreen = lastState.useFullscreen !== false;
+    if (!useFullscreen && settings.allowWindowed) {
+        if (lastState.width && lastState.height) {
+            width  = lastState.width;
+            height = lastState.height;
+        }
+        if (lastState.x != null && lastState.y != null) {
+            x = lastState.x;
+            y = lastState.y;
+        }
+    }
+
     win = new BrowserWindow({
         title: "eDEX-UI",
         x,
@@ -186,7 +206,7 @@ function createWindow(settings) {
         show: false,
         resizable: true,
         movable: settings.allowWindowed || false,
-        fullscreen: settings.forceFullscreen || false,
+        fullscreen: (settings.forceFullscreen || useFullscreen) || false,
         autoHideMenuBar: true,
         frame: settings.allowWindowed || false,
         backgroundColor: '#000000',
@@ -215,9 +235,26 @@ function createWindow(settings) {
     win.show();
     if (!settings.allowWindowed) {
         win.setResizable(false);
-    } else if (!require(lastWindowStateFile)["useFullscreen"]) {
+    } else if (!useFullscreen) {
         win.setFullScreen(false);
     }
+
+    // Salvar geometria da janela ao redimensionar ou mover
+    const saveWindowGeometry = () => {
+        if (win.isFullScreen() || win.isMaximized()) return;
+        try {
+            let state = JSON.parse(fs.readFileSync(lastWindowStateFile, "utf-8"));
+            let [w, h] = win.getSize();
+            let [wx, wy] = win.getPosition();
+            state.width  = w;
+            state.height = h;
+            state.x = wx;
+            state.y = wy;
+            fs.writeFileSync(lastWindowStateFile, JSON.stringify(state, "", 4));
+        } catch(e) {}
+    };
+    win.on("resize", saveWindowGeometry);
+    win.on("move",   saveWindowGeometry);
 
     signale.watch("Waiting for frontend connection...");
 }
