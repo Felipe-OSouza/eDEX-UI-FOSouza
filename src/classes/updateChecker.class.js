@@ -1,8 +1,7 @@
 class UpdateChecker {
     constructor() {
-        // Update check desabilitado: este fork (security-patched) é a versão
-        // mais recente disponível e o projeto original está arquivado.
-        // O aviso de atualização foi removido para evitar falsos positivos.
+        // Update check desabilitado: fork security-patched é a versão
+        // mais recente disponível. Projeto original está arquivado.
         let electron = require("electron");
         electron.ipcRenderer.send("log", "info", "UpdateChecker: disabled (security-patched fork, no updates expected).");
     }
